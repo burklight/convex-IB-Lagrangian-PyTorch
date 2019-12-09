@@ -2,7 +2,7 @@
 
 Code for the article ["The Convex Information Bottleneck Lagrangian"](https://arxiv.org/abs/1911.11000). This code is meant to verify and obtain the figures from the article. 
 
-This is a theoretical article. An implementation of the ["Nonlinear Information Bottleneck, 2019"](https://arxiv.org/abs/1705.02436), from Artemy Kolchinsky, Brendan D. Tracey and David H. Wolpert in PyTorch can be found ["here"](https://github.com/burklight/nonlinear-IB-PyTorch) and in Tensorflow ["here"](https://github.com/artemyk/nonlinearIB). In the PyTorch implementation we added the possibility of using the Convex Information Bottleneck Lagrangian.
+This is a theoretical article. An updated implementation of the ["Nonlinear Information Bottleneck, 2019"](https://arxiv.org/abs/1705.02436), from Artemy Kolchinsky, Brendan D. Tracey and David H. Wolpert in PyTorch can be found ["here"](https://github.com/burklight/nonlinear-IB-PyTorch) and in Tensorflow ["here"](https://github.com/artemyk/nonlinearIB). In the PyTorch implementation we added the possibility of using the Convex Information Bottleneck Lagrangian.
 
 ## Requirements
 
