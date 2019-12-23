@@ -147,7 +147,7 @@ def plot_behavior(logs_dir,figs_dir,K,betas,train_logvar_t,HY,hfun='exp',param=1
     ax[1].plot(betas, ITY_train, 'X:', color='red', markersize=9, markeredgecolor='black', label = 'train')
     ax[1].plot(betas, ITY_validation, '.:', color = 'blue', markersize=9, markeredgecolor='black', label='validation')
     ax[1].set_xlabel(r'$\beta$')
-    ax[1].set_ylabel(r'$I(X;T)$')
+    ax[1].set_ylabel(r'$I(T;Y)$')
     ax[1].annotate(r' $I(X;Y) = H(Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
     ax[1].set_xlim(left=0,right=np.max(betas))
     ax[1].set_ylim(bottom=0,top=HY*(1.1))
