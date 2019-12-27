@@ -24,6 +24,7 @@ class Deterministic_encoder(torch.nn.Module):
             layers.append(torch.nn.ReLU())
             layers.append(torch.nn.Linear(800,self.K))
             self.f_theta = torch.nn.Sequential(*layers)
+
         elif self.network_type == 'conv_net_fashion_mnist':
             layers = []
             layers.append(torch.nn.ReflectionPad2d(1))
@@ -32,9 +33,9 @@ class Deterministic_encoder(torch.nn.Module):
             self.f_theta_conv = torch.nn.Sequential(*layers)
             
             layers = []
-            layers.append(torch.nn.Linear(1250,128))
+            layers.append(torch.nn.Linear(1250,800))
             layers.append(torch.nn.ReLU6())
-            layers.append(torch.nn.Linear(128,self.K))
+            layers.append(torch.nn.Linear(800,self.K))
             self.f_theta_lin = torch.nn.Sequential(*layers)
 
         elif self.network_type == 'mlp_california_housing':
@@ -45,6 +46,16 @@ class Deterministic_encoder(torch.nn.Module):
             layers.append(torch.nn.ReLU())
             layers.append(torch.nn.Linear(128,self.K))
             self.f_theta = torch.nn.Sequential(*layers)
+        
+        elif self.network_type == 'conv_net_trec':
+            '''
+            Network type largely inspired on 'https://github.com/bentrevett/pytorch-sentiment-analysis/blob/master/3%20-%20Faster%20Sentiment%20Analysis.ipynb'
+            '''
+            self.embedding = torch.nn.Embedding(n_x,100)
+            self.convolutions = torch.nn.ModuleList([
+                torch.nn.Conv2d(1,100,(fs,100)) for fs in [2,3,4]
+            ])
+            self.f_theta_lin = torch.nn.Linear(3*100,self.K)
 
     def forward(self,x):
 
@@ -55,6 +66,14 @@ class Deterministic_encoder(torch.nn.Module):
             mean_t_conv = self.f_theta_conv(x) 
             mean_t_conv = mean_t_conv.view(-1,1250)
             mean_t = self.f_theta_lin(mean_t_conv)
+        elif self.network_type == 'conv_net_trec':
+            x = x.permute(1,0)
+            z = self.embedding(x)
+            z = z.unsqueeze(1)
+            z_convs = [torch.nn.functional.relu6(convolution(z)).squeeze(3) for convolution in self.convolutions]
+            z_pooled = [torch.nn.functional.max_pool1d(z_conv, z_conv.shape[2]).squeeze(2) for z_conv in z_convs]
+            z_cat = torch.cat(z_pooled,dim=1)
+            mean_t = self.f_theta_lin(z_cat)
 
         return mean_t
 
@@ -73,18 +92,25 @@ class Deterministic_decoder(torch.nn.Module):
         self.K = K
         self.network_type = network_type
 
-        if network_type == 'mlp_mnist':
+        if network_type == 'mlp_mnist' or network_type == 'fashion_mnist':
             layers = []
             layers.append(torch.nn.Linear(self.K,800))
             layers.append(torch.nn.ReLU())
             layers.append(torch.nn.Linear(800,n_y))
             self.g_theta = torch.nn.Sequential(*layers)
-        elif network_type == 'conv_net_fashion_mnist' or network_type == 'mlp_california_housing':
+        elif network_type == 'mlp_california_housing':
             layers = []
             layers.append(torch.nn.Linear(self.K,128))
             layers.append(torch.nn.ReLU())
             layers.append(torch.nn.Linear(128,n_y))
             self.g_theta = torch.nn.Sequential(*layers)
+        elif network_type == 'conv_net_trec':
+            layers = []
+            layers.append(torch.nn.Linear(self.K,128))
+            layers.append(torch.nn.ReLU6())
+            layers.append(torch.nn.Linear(128,n_y))
+            self.g_theta = torch.nn.Sequential(*layers)
+
 
     def forward(self,t):
 
@@ -102,15 +128,23 @@ class nlIB_network(torch.nn.Module):
         · train_logvar_t (bool) : if true, logvar_t is trained
     '''
 
-    def __init__(self,K,n_x,n_y,logvar_t=-1.0,train_logvar_t=False,network_type='mlp_mnist'):
+    def __init__(self,K,n_x,n_y,logvar_t=-1.0,train_logvar_t=False,network_type='mlp_mnist',TEXT=None):
         super(nlIB_network,self).__init__()
 
-        self.encoder = Deterministic_encoder(K,n_x,network_type)
-        self.decoder = Deterministic_decoder(K,n_y,network_type)
+        self.network_type = network_type
+        self.encoder = Deterministic_encoder(K,n_x,self.network_type)
+        self.decoder = Deterministic_decoder(K,n_y,self.network_type)
         if train_logvar_t:
             self.logvar_t = torch.nn.Parameter(torch.Tensor([logvar_t]))
         else:
             self.logvar_t = torch.Tensor([logvar_t])
+        if self.network_type == 'conv_net_trec':
+            pretrained_embedding = TEXT.vocab.vectors
+            self.encoder.embedding.weight.data.copy_(pretrained_embedding)
+            UNK_IDX = TEXT.vocab.stoi[TEXT.unk_token]
+            PAD_IDX = TEXT.vocab.stoi[TEXT.pad_token]
+            self.encoder.embedding.weight.data[UNK_IDX] = torch.zeros(100)
+            self.encoder.embedding.weight.data[PAD_IDX] = torch.zeros(100)
 
     def encode(self,x,random=True):
 

@@ -1,4 +1,4 @@
-import torch
+import torch, torchtext
 import math
 import autograd
 import scipy.optimize
@@ -19,7 +19,7 @@ class ConvexIB(torch.nn.Module):
     '''
 
     def __init__(self,n_x,n_y,problem_type,network_type,K,beta,logvar_t=-1.0,logvar_kde=-1.0,\
-        train_logvar_t=False, u_func_name='pow', hyperparameter=1.0):
+        train_logvar_t=False, u_func_name='pow', hyperparameter=1.0, TEXT=None):
         super(ConvexIB,self).__init__()
 
         self.HY = np.log(n_y) # in natts
@@ -40,7 +40,7 @@ class ConvexIB(torch.nn.Module):
         self.kde_jacobian = autograd.grad(KDE_loo_neg_log_likelihood)
 
         self.train_logvar_t = train_logvar_t
-        self.network = nlIB_network(K,n_x,n_y,logvar_t,self.train_logvar_t,network_type)
+        self.network = nlIB_network(K,n_x,n_y,logvar_t,self.train_logvar_t,network_type,TEXT)
 
         self.problem_type = problem_type 
         if self.problem_type == 'classification':
@@ -152,20 +152,30 @@ class ConvexIB(torch.nn.Module):
 
         # Data Loader
         n_sgd_batches = math.floor(len(trainset) / sgd_batch_size)
-        sgd_train_loader = torch.utils.data.DataLoader(trainset, \
-            batch_size=sgd_batch_size,shuffle=True)
-        if not same_batch:
-            n_mi_batches = math.floor(len(trainset) / mi_batch_size)
-            mi_train_loader = torch.utils.data.DataLoader(trainset, \
-                batch_size=mi_batch_size,shuffle=True)
-            mi_train_batches = enumerate(mi_train_loader)
-        validation_loader = torch.utils.data.DataLoader(validationset, \
-            batch_size=len(validationset),shuffle=False)
+        if self.network.network_type == 'conv_net_trec': # Only with same batch!
+            sgd_train_loader = torchtext.data.BucketIterator(
+                trainset,batch_size=sgd_batch_size,device='cpu')
+            validation_loader = torchtext.data.BucketIterator(
+                validationset,batch_size=len(validationset),device='cpu')
+        else:
+            sgd_train_loader = torch.utils.data.DataLoader(trainset, \
+                batch_size=sgd_batch_size,shuffle=True)
+            if not same_batch:
+                n_mi_batches = math.floor(len(trainset) / mi_batch_size)
+                mi_train_loader = torch.utils.data.DataLoader(trainset, \
+                    batch_size=mi_batch_size,shuffle=True)
+                mi_train_batches = enumerate(mi_train_loader)
+            validation_loader = torch.utils.data.DataLoader(validationset, \
+                batch_size=len(validationset),shuffle=False)
 
         # Prepare visualization
         if visualization:
-            visualization_loader = torch.utils.data.DataLoader(trainset, \
-                batch_size=10000,shuffle=False) # Only for visualization
+            if self.network.network_type == 'conv_net_trec':
+                sgd_train_loader, validation_loader = torchtext.data.BucketIterator(
+                    trainset,batch_size=len(trainset),device='cpu') # Only for visualization
+            else:
+                visualization_loader = torch.utils.data.DataLoader(trainset, \
+                    batch_size=10000,shuffle=False) # Only for visualization
             fig, ax = init_results_visualization(self.K)
 
         # Prepare name for figures and logs
@@ -201,7 +211,12 @@ class ConvexIB(torch.nn.Module):
                 print("Epoch #{}/{}".format(epoch,n_epochs))
 
             # Randomly sample a mini batch for the SGD
-            for idx_sgd_batch, (sgd_train_x, sgd_train_y) in enumerate(bar(sgd_train_loader)):
+            for idx_sgd_batch, sgd_batch in enumerate(bar(sgd_train_loader)):
+
+                if self.network.network_type == 'conv_net_trec':
+                    sgd_train_x, sgd_train_y = sgd_batch.text, sgd_batch.label
+                else:
+                    sgd_train_x, sgd_train_y = sgd_batch
 
                 # Skip the last batch
                 if idx_sgd_batch == n_sgd_batches - 1:
@@ -252,7 +267,11 @@ class ConvexIB(torch.nn.Module):
                 with torch.no_grad():
                     epochs[report] = epoch
 
-                    for _, (train_x, train_y) in enumerate(sgd_train_loader):
+                    for _, train_batch in enumerate(sgd_train_loader):
+                        if self.network.network_type == 'conv_net_trec':
+                            train_x, train_y = train_batch.text, train_batch.label
+                        else: 
+                            train_x, train_y = train_batch
                         train_logits_y = self.network(train_x)
                         train_mean_t = self.network.encode(train_x,random=False)
                         train_IXT[report] += self.get_IXT(train_mean_t).item() / n_sgd_batches
@@ -265,7 +284,11 @@ class ConvexIB(torch.nn.Module):
                             self.beta * train_IXT[report]) / n_sgd_batches
                         train_performance[report] += self.evaluate(train_logits_y,train_y).item() / n_sgd_batches
 
-                    _, (validation_x, validation_y) = next(enumerate(validation_loader))
+                    _, validation_batch = next(enumerate(validation_loader))
+                    if self.network.network_type == 'conv_net_trec':
+                        validation_x, validation_y = validation_batch.text, validation_batch.label
+                    else: 
+                        validation_x, validation_y = validation_batch
                     validation_logits_y = self.network(validation_x)
                     validation_mean_t = self.network.encode(validation_x,random=False)
                     validation_IXT[report] = self.get_IXT(validation_mean_t).item()

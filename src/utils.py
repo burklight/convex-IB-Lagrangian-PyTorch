@@ -1,7 +1,7 @@
 import torch
 import torch.nn
 import torch.nn.init
-import torchvision
+import torchvision, torchtext
 import argparse
 import sklearn.datasets
 import numpy as np
@@ -93,6 +93,22 @@ def get_california_housing(percentage_test=0.3):
     testset = DatasetRegression(X_test,Y_test)
     return trainset, testset
 
+def get_TREC():
+
+    TEXT = torchtext.data.Field(tokenize = 'spacy')
+    LABEL = torchtext.data.LabelField()
+
+    trainset, testset = torchtext.datasets.TREC.splits(TEXT, LABEL, fine_grained=False, root='../data/')
+
+    MAX_VOCAB_SIZE = 25_000
+    TEXT.build_vocab(trainset, 
+                    max_size = MAX_VOCAB_SIZE, 
+                    vectors = "glove.6B.100d", 
+                    unk_init = torch.Tensor.normal_)
+    LABEL.build_vocab(trainset)
+
+    return trainset, testset, TEXT, LABEL
+
 def get_data(dataset='mnist'):
     '''
     This function returns the training and validation set from MNIST
@@ -104,6 +120,8 @@ def get_data(dataset='mnist'):
         return get_fashion_mnist()
     elif dataset == 'california_housing':
         return get_california_housing()
+    elif dataset == 'trec':
+        return get_TREC()
 
 def get_args():
     '''
@@ -149,7 +167,7 @@ def get_args():
         help = 'mini-batch size for the I(X;T) estimation')
     parser.add_argument('--same_batch', action = 'store_true', default = False,
         help = 'use the same mini-batch for the SGD on the error and I(X;T) estimation')
-    parser.add_argument('--dataset', choices = ['mnist', 'fashion_mnist', 'california_housing'], default = 'mnist',
+    parser.add_argument('--dataset', choices = ['mnist', 'fashion_mnist', 'california_housing','trec'], default = 'mnist',
         help = 'dataset where to run the experiments. Classification: MNIST or Fashion MNIST. Regression: California housing.')
     parser.add_argument('--optimizer_name', choices = ['sgd', 'rmsprop', 'adadelta', 'adagrad', 'adam', 'asgd'], default = 'adam',
         help = 'optimizer')

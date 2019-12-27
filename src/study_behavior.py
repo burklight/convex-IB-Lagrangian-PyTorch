@@ -15,20 +15,24 @@ args = get_args()
 
 # Obtain the data
 dataset_name = args.dataset
-trainset, validationset = get_data(dataset_name)
 if dataset_name == 'mnist':
+    trainset, validationset = get_data(dataset_name)
     n_x = 784
     n_y = 10
     network_type = 'mlp_mnist'
     maxIXY = np.log2(10)
     problem_type = 'classification'
+    TEXT = None
 elif dataset_name == 'fashion_mnist':
+    trainset, validationset = get_data(dataset_name)
     n_x = (28,28)
     n_y = 10
     network_type = 'conv_net_fashion_mnist'
     maxIXY = np.log2(n_y)
     problem_type = 'classification'
+    TEXT = None
 elif dataset_name == 'california_housing':
+    trainset, validationset = get_data(dataset_name)
     n_x = 8
     n_y = 1
     network_type = 'mlp_california_housing'
@@ -36,6 +40,14 @@ elif dataset_name == 'california_housing':
     HY = 0.5 * math.log(varY.item() * 2.0 * math.pi * math.e) / math.log(2)
     maxIXY = 0.72785 / math.log(2) # Estimation by training with only the cross entropy and getting the result after training 
     problem_type = 'regression'
+    TEXT = None
+elif dataset_name == 'trec':
+    trainset, validationset, TEXT, LABEL = get_data(dataset_name)
+    n_x = len(TEXT.vocab)
+    n_y = len(LABEL.vocab)
+    network_type = 'conv_net_trec'
+    maxIXY = np.log2(n_y)
+    problem_type = 'classification'
 
 # Create the folders
 args.logs_dir = os.path.join(args.logs_dir,dataset_name) + '/'
@@ -62,7 +74,7 @@ def train_and_save(beta):
     print("--- Studying Non-Linear IB behavior with beta = " + str(round(beta,3)) + " ---")
     # Train the network
     convex_IB = ConvexIB(n_x = n_x, n_y = n_y, problem_type = problem_type, network_type = network_type, K = args.K, beta = beta, logvar_t = args.logvar_t, 
-        logvar_kde = args.logvar_kde, train_logvar_t = args.train_logvar_t, u_func_name = args.u_func_name, hyperparameter = args.hyperparameter)
+        logvar_kde = args.logvar_kde, train_logvar_t = args.train_logvar_t, u_func_name = args.u_func_name, hyperparameter = args.hyperparameter, TEXT=TEXT)
     convex_IB.fit(trainset, validationset, n_epochs = args.n_epochs, learning_rate = args.learning_rate,
         learning_rate_drop = args.learning_rate_drop, learning_rate_steps = args.learning_rate_steps, sgd_batch_size = args.sgd_batch_size,
         mi_batch_size = args.mi_batch_size, same_batch = args.same_batch, eval_rate = args.eval_rate, optimizer_name = args.optimizer_name,
