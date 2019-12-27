@@ -92,7 +92,7 @@ class Deterministic_decoder(torch.nn.Module):
         self.K = K
         self.network_type = network_type
 
-        if network_type == 'mlp_mnist' or network_type == 'fashion_mnist':
+        if network_type == 'mlp_mnist' or network_type == 'conv_net_fashion_mnist':
             layers = []
             layers.append(torch.nn.Linear(self.K,800))
             layers.append(torch.nn.ReLU())
