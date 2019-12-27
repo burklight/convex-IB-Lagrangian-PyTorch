@@ -9,23 +9,53 @@ class Deterministic_encoder(torch.nn.Module):
         · n_x (int) : dimensionality of the input variable
     '''
 
-    def __init__(self,K,n_x):
+    def __init__(self,K,n_x,network_type):
         super(Deterministic_encoder,self).__init__()
 
         self.K = K
+        self.n_x = n_x
+        self.network_type = network_type
 
-        layers = []
-        layers.append(torch.nn.Linear(n_x,800))
-        layers.append(torch.nn.ReLU())
-        layers.append(torch.nn.Linear(800,800))
-        layers.append(torch.nn.ReLU())
-        layers.append(torch.nn.Linear(800,self.K))
-        self.f_theta = torch.nn.Sequential(*layers)
+        if self.network_type == 'mlp_mnist':
+            layers = []
+            layers.append(torch.nn.Linear(self.n_x,800))
+            layers.append(torch.nn.ReLU())
+            layers.append(torch.nn.Linear(800,800))
+            layers.append(torch.nn.ReLU())
+            layers.append(torch.nn.Linear(800,self.K))
+            self.f_theta = torch.nn.Sequential(*layers)
+        elif self.network_type == 'conv_net_fashion_mnist':
+            layers = []
+            layers.append(torch.nn.ReflectionPad2d(1))
+            layers.append(torch.nn.Conv2d(1,5,4,2))
+            layers.append(torch.nn.Conv2d(5,50,5,2))
+            self.f_theta_conv = torch.nn.Sequential(*layers)
+            
+            layers = []
+            layers.append(torch.nn.Linear(1250,128))
+            layers.append(torch.nn.ReLU6())
+            layers.append(torch.nn.Linear(128,self.K))
+            self.f_theta_lin = torch.nn.Sequential(*layers)
+
+        elif self.network_type == 'mlp_california_housing':
+            layers = []
+            layers.append(torch.nn.Linear(self.n_x,128))
+            layers.append(torch.nn.ReLU())
+            layers.append(torch.nn.Linear(128,128))
+            layers.append(torch.nn.ReLU())
+            layers.append(torch.nn.Linear(128,self.K))
+            self.f_theta = torch.nn.Sequential(*layers)
 
     def forward(self,x):
 
-        x = x.view(-1,784)
-        mean_t = self.f_theta(x)
+        if self.network_type == 'mlp_mnist' or self.network_type == 'mlp_california_housing':
+            x = x.view(-1,self.n_x)
+            mean_t = self.f_theta(x)
+        elif self.network_type == 'conv_net_fashion_mnist':
+            mean_t_conv = self.f_theta_conv(x) 
+            mean_t_conv = mean_t_conv.view(-1,1250)
+            mean_t = self.f_theta_lin(mean_t_conv)
+
         return mean_t
 
 class Deterministic_decoder(torch.nn.Module):
@@ -37,16 +67,24 @@ class Deterministic_decoder(torch.nn.Module):
         · n_y (int) : dimensionality of the output variable (number of classes)
     '''
 
-    def __init__(self,K,n_y):
+    def __init__(self,K,n_y,network_type):
         super(Deterministic_decoder,self).__init__()
 
         self.K = K
+        self.network_type = network_type
 
-        layers = []
-        layers.append(torch.nn.Linear(self.K,800))
-        layers.append(torch.nn.ReLU())
-        layers.append(torch.nn.Linear(800,n_y))
-        self.g_theta = torch.nn.Sequential(*layers)
+        if network_type == 'mlp_mnist':
+            layers = []
+            layers.append(torch.nn.Linear(self.K,800))
+            layers.append(torch.nn.ReLU())
+            layers.append(torch.nn.Linear(800,n_y))
+            self.g_theta = torch.nn.Sequential(*layers)
+        elif network_type == 'conv_net_fashion_mnist' or network_type == 'mlp_california_housing':
+            layers = []
+            layers.append(torch.nn.Linear(self.K,128))
+            layers.append(torch.nn.ReLU())
+            layers.append(torch.nn.Linear(128,n_y))
+            self.g_theta = torch.nn.Sequential(*layers)
 
     def forward(self,t):
 
@@ -64,11 +102,11 @@ class nlIB_network(torch.nn.Module):
         · train_logvar_t (bool) : if true, logvar_t is trained
     '''
 
-    def __init__(self,K,n_x,n_y,logvar_t=-1.0,train_logvar_t=False):
+    def __init__(self,K,n_x,n_y,logvar_t=-1.0,train_logvar_t=False,network_type='mlp_mnist'):
         super(nlIB_network,self).__init__()
 
-        self.encoder = Deterministic_encoder(K,n_x)
-        self.decoder = Deterministic_decoder(K,n_y)
+        self.encoder = Deterministic_encoder(K,n_x,network_type)
+        self.decoder = Deterministic_decoder(K,n_y,network_type)
         if train_logvar_t:
             self.logvar_t = torch.nn.Parameter(torch.Tensor([logvar_t]))
         else:

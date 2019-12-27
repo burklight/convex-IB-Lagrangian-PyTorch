@@ -18,11 +18,13 @@ class ConvexIB(torch.nn.Module):
     Implementation of the Convex IB Lagrangian using the Kolchinsky et al. 2017 "Nonlinear Information Bottleneck" as backbone
     '''
 
-    def __init__(self,n_x,n_y,K,beta,logvar_t=-1.0,logvar_kde=-1.0,\
+    def __init__(self,n_x,n_y,problem_type,network_type,K,beta,logvar_t=-1.0,logvar_kde=-1.0,\
         train_logvar_t=False, u_func_name='pow', hyperparameter=1.0):
         super(ConvexIB,self).__init__()
 
         self.HY = np.log(n_y) # in natts
+        self.maxIXY = self.HY # in natts
+        self.varY = 0 # to be updated with the training dataset
 
         self.u_func_name = u_func_name
         if self.u_func_name == 'pow':
@@ -38,7 +40,13 @@ class ConvexIB(torch.nn.Module):
         self.kde_jacobian = autograd.grad(KDE_loo_neg_log_likelihood)
 
         self.train_logvar_t = train_logvar_t
-        self.network = nlIB_network(K,n_x,n_y,logvar_t,self.train_logvar_t)
+        self.network = nlIB_network(K,n_x,n_y,logvar_t,self.train_logvar_t,network_type)
+
+        self.problem_type = problem_type 
+        if self.problem_type == 'classification':
+            self.ce = torch.nn.CrossEntropyLoss()
+        else:
+            self.mse = torch.nn.MSELoss()
 
     def update_logvar_kde(self, mean_t):
         '''
@@ -73,23 +81,31 @@ class ConvexIB(torch.nn.Module):
         - y (Tensor) : labels of the data
         '''
 
-        ce = torch.nn.CrossEntropyLoss()
-        HY_given_T = ce(logits_y,y)
-        self.ITY = (self.HY - HY_given_T) / np.log(2) # in bits
-        return self.ITY
+        if self.problem_type == 'classification':
+            HY_given_T = self.ce(logits_y,y)
+            self.ITY = (self.HY - HY_given_T) / np.log(2) # in bits
+            return self.ITY
+        else: 
+            MSE = self.mse(logits_y.view(-1),y)
+            ITY = 0.5 * torch.log(self.varY / MSE) / np.log(2) # in bits
+            return ITY , self.HY - MSE
 
     def evaluate(self,logits_y,y):
         '''
-        Evauluates the performance of the model (accuracy)
+        Evauluates the performance of the model
         Parameters:
         - logits_y (Tensor) : deterministic transformation of the bottleneck variable
         - y (Tensor) : labels of the data
         '''
 
         with torch.no_grad():
-            y_hat = y.eq(torch.max(logits_y,dim=1)[1])
-            accuracy = torch.mean(y_hat.float())
-        return accuracy
+            if self.problem_type == 'classification':
+                y_hat = y.eq(torch.max(logits_y,dim=1)[1])
+                accuracy = torch.mean(y_hat.float())
+                return accuracy
+            else: 
+                mse = self.mse(logits_y.view(-1),y) 
+                return mse 
 
     def fit(self,trainset,validationset,n_epochs=200,learning_rate=0.0001,\
         learning_rate_drop=0.6,learning_rate_steps=10, sgd_batch_size=128,mi_batch_size=1000, \
@@ -119,13 +135,20 @@ class ConvexIB(torch.nn.Module):
         n_reports = math.floor(n_epochs / eval_rate) + 1
         train_loss = np.zeros(n_reports)
         validation_loss = np.zeros(n_reports)
-        train_accuracy = np.zeros(n_reports)
-        validation_accuracy = np.zeros(n_reports)
+        train_performance = np.zeros(n_reports)
+        validation_performance = np.zeros(n_reports)
         train_IXT = np.zeros(n_reports)
         train_ITY = np.zeros(n_reports)
         validation_IXT = np.zeros(n_reports)
         validation_ITY = np.zeros(n_reports)
         epochs = np.zeros(n_reports)
+
+        # If regression we update the variance of the output 
+        if self.problem_type == 'regression':
+            self.varY = torch.var(trainset.targets)
+            self.HY = 0.5 * math.log(self.varY.item()*2.0*math.pi*math.e) # in natts
+            self.maxIXY = 0.72785 # approximation for California Housing (just train with beta = 0 and get the value of I(T;Y) after training)
+                                  # only for visualization purposes
 
         # Data Loader
         n_sgd_batches = math.floor(len(trainset) / sgd_batch_size)
@@ -208,10 +231,16 @@ class ConvexIB(torch.nn.Module):
                 # Gradient descent
                 optimizer.zero_grad()
                 sgd_train_logits_y = self.network(sgd_train_x)
-                sgd_train_ITY = self.get_ITY(sgd_train_logits_y,sgd_train_y)
+                if self.problem_type == 'classification':
+                    sgd_train_ITY = self.get_ITY(sgd_train_logits_y,sgd_train_y)
+                else: 
+                    sgd_train_ITY, sgd_train_ITY_lower = self.get_ITY(sgd_train_logits_y,sgd_train_y)
                 mi_train_mean_t = self.network.encode(mi_train_x,random=False)
                 mi_train_IXT = self.get_IXT(mi_train_mean_t)
-                loss = - 1.0 * (sgd_train_ITY - self.beta * self.u_func(mi_train_IXT))
+                if self.problem_type == 'classification':
+                    loss = - 1.0 * (sgd_train_ITY - self.beta * self.u_func(mi_train_IXT))
+                else: 
+                    loss = - 1.0 * (sgd_train_ITY_lower - self.beta * self.u_func(mi_train_IXT))
                 loss.backward()
                 optimizer.step()
 
@@ -227,27 +256,39 @@ class ConvexIB(torch.nn.Module):
                         train_logits_y = self.network(train_x)
                         train_mean_t = self.network.encode(train_x,random=False)
                         train_IXT[report] += self.get_IXT(train_mean_t).item() / n_sgd_batches
-                        train_ITY[report] += self.get_ITY(train_logits_y,train_y).item() / n_sgd_batches
+                        if self.problem_type == 'classification':
+                            train_ITY[report] += self.get_ITY(train_logits_y,train_y).item() / n_sgd_batches
+                        else: 
+                            tmp_train_ITY, _ = self.get_ITY(train_logits_y,train_y)
+                            train_ITY[report] += tmp_train_ITY.item() / n_sgd_batches
                         train_loss[report] += - 1.0 * (train_ITY[report] - \
                             self.beta * train_IXT[report]) / n_sgd_batches
-                        train_accuracy[report] += self.evaluate(train_logits_y,train_y).item() / n_sgd_batches
+                        train_performance[report] += self.evaluate(train_logits_y,train_y).item() / n_sgd_batches
 
                     _, (validation_x, validation_y) = next(enumerate(validation_loader))
                     validation_logits_y = self.network(validation_x)
                     validation_mean_t = self.network.encode(validation_x,random=False)
                     validation_IXT[report] = self.get_IXT(validation_mean_t).item()
-                    validation_ITY[report] = self.get_ITY(validation_logits_y,validation_y).item()
+                    if self.problem_type == 'classification':
+                        validation_ITY[report] = self.get_ITY(validation_logits_y,validation_y).item()
+                    else: 
+                        tmp_validation_ITY, _ = self.get_ITY(validation_logits_y,validation_y)
+                        validation_ITY[report] = tmp_validation_ITY.item()
                     validation_loss[report] = - 1.0 * (validation_ITY[report] - \
                         self.beta * train_IXT[report])
-                    validation_accuracy[report] = self.evaluate(validation_logits_y,validation_y).item()
+                    validation_performance[report] = self.evaluate(validation_logits_y,validation_y).item()
 
                 if verbose:
                     print("\n")
                     print("\n** Results report **")
                     print("- I(X;T) = " + str(train_IXT[report]))
                     print("- I(T;Y) = " + str(train_ITY[report]))
-                    print("- Training accuracy: " + str(train_accuracy[report]))
-                    print("- Validation accuracy: " + str(validation_accuracy[report]))
+                    if self.problem_type == 'classification':
+                        print("- Training accuracy: " + str(train_performance[report]))
+                        print("- Validation accuracy: " + str(validation_performance[report]))
+                    else:
+                        print("- Training MSE: " + str(train_performance[report]))
+                        print("- Validation MSE: " + str(validation_performance[report]))
                     print("\n")
 
                 report += 1
@@ -278,8 +319,12 @@ class ConvexIB(torch.nn.Module):
                 np.save(logs_dir + name_base + 'validation_ITY', validation_ITY)
                 np.save(logs_dir + name_base + 'train_loss', train_loss)
                 np.save(logs_dir + name_base + 'validation_loss', validation_loss)
-                np.save(logs_dir + name_base + 'train_accuracy', train_accuracy)
-                np.save(logs_dir + name_base + 'validation_accuracy', validation_accuracy)
+                if self.problem_type == 'classification':
+                    np.save(logs_dir + name_base + 'train_accuracy', train_performance)
+                    np.save(logs_dir + name_base + 'validation_accuracy', validation_performance)
+                else: 
+                    np.save(logs_dir + name_base + 'train_mse', train_performance)
+                    np.save(logs_dir + name_base + 'validation_mse', validation_performance) 
                 np.save(logs_dir + name_base + 'epochs', epochs)
                 if visualization:
                     plt.savefig(figs_dir + name_base + 'image.pdf', format = 'pdf')

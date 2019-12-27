@@ -6,6 +6,7 @@ import torch
 import os
 import numpy as np
 import multiprocessing
+import math
 
 torch.set_num_threads(1)
 
@@ -13,9 +14,33 @@ torch.set_num_threads(1)
 args = get_args()
 
 # Obtain the data
-trainset, validationset = get_data()
+dataset_name = args.dataset
+trainset, validationset = get_data(dataset_name)
+if dataset_name == 'mnist':
+    n_x = 784
+    n_y = 10
+    network_type = 'mlp_mnist'
+    maxIXY = np.log2(10)
+    problem_type = 'classification'
+elif dataset_name == 'fashion_mnist':
+    n_x = (28,28)
+    n_y = 10
+    network_type = 'conv_net_fashion_mnist'
+    maxIXY = np.log2(n_y)
+    problem_type = 'classification'
+elif dataset_name == 'california_housing':
+    n_x = 8
+    n_y = 1
+    network_type = 'mlp_california_housing'
+    varY = torch.var(trainset.targets)
+    HY = 0.5 * math.log(varY.item() * 2.0 * math.pi * math.e) / math.log(2)
+    maxIXY = 0.72785 / math.log(2) # Estimation by training with only the cross entropy and getting the result after training 
+    problem_type = 'regression'
 
 # Create the folders
+args.logs_dir = os.path.join(args.logs_dir,dataset_name) + '/'
+args.figs_dir = os.path.join(args.figs_dir,dataset_name) + '/'
+args.models_dir = os.path.join(args.models_dir,dataset_name) + '/'
 os.makedirs(args.logs_dir) if not os.path.exists(args.logs_dir) else None
 os.makedirs(args.figs_dir) if not os.path.exists(args.figs_dir) else None
 os.makedirs(args.models_dir) if not os.path.exists(args.models_dir) else None
@@ -36,7 +61,7 @@ def train_and_save(beta):
 
     print("--- Studying Non-Linear IB behavior with beta = " + str(round(beta,3)) + " ---")
     # Train the network
-    convex_IB = ConvexIB(n_x = 784, n_y = 10, K = args.K, beta = beta, logvar_t = args.logvar_t, 
+    convex_IB = ConvexIB(n_x = n_x, n_y = n_y, problem_type = problem_type, network_type = network_type, K = args.K, beta = beta, logvar_t = args.logvar_t, 
         logvar_kde = args.logvar_kde, train_logvar_t = args.train_logvar_t, u_func_name = args.u_func_name, hyperparameter = args.hyperparameter)
     convex_IB.fit(trainset, validationset, n_epochs = args.n_epochs, learning_rate = args.learning_rate,
         learning_rate_drop = args.learning_rate_drop, learning_rate_steps = args.learning_rate_steps, sgd_batch_size = args.sgd_batch_size,
@@ -54,5 +79,6 @@ with multiprocessing.Pool(8) as p:
     p.map(train_and_save, betas)
 
 # Visualize the comparison
-plot_behavior(args.logs_dir,args.figs_dir,args.K,betas,args.train_logvar_t,np.log2(10),args.u_func_name,args.hyperparameter)
-plot_clustering(args.logs_dir,args.figs_dir,betas,args.K,args.train_logvar_t,example=args.example_clusters)
+plot_behavior(args.logs_dir,args.figs_dir,args.K,betas,args.train_logvar_t,maxIXY,args.u_func_name,args.hyperparameter)
+if problem_type == 'classification':
+    plot_clustering(args.logs_dir,args.figs_dir,betas,args.K,args.train_logvar_t,example=args.example_clusters)

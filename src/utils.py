@@ -3,7 +3,9 @@ import torch.nn
 import torch.nn.init
 import torchvision
 import argparse
-
+import sklearn.datasets
+import numpy as np
+import random
 
 def weight_init(m):
     '''
@@ -23,18 +25,85 @@ def weight_init(m):
         if m.bias is not None:
             torch.nn.init.normal_(m.bias.data)
 
-def get_data():
-    '''
-    This function returns the training and validation set from MNIST
+def get_mnist():
+    ''' 
+    This function returns the MNIST dataset in training, validation, test splits.
     '''
 
     trainset = torchvision.datasets.MNIST(root='../data', train=True, download=True, \
         transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), \
-        torchvision.transforms.Normalize((0.1307,), (0.3081,))]))
-    validationset = torchvision.datasets.MNIST(root='../data', train=False, download=True, \
+        torchvision.transforms.Normalize((0.0,), (1.0,))]))
+    testset = torchvision.datasets.MNIST(root='../data', train=False, download=True, \
         transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), \
-        torchvision.transforms.Normalize((0.1307,), (0.3081,))]))
-    return trainset, validationset
+        torchvision.transforms.Normalize((0.0,), (1.0,))]))
+    
+    return trainset, testset
+
+def get_fashion_mnist():
+    ''' 
+    This function returns the MNIST dataset in training, validation, test splits. Parameters:
+    - percentage_validation (float) : Percentage of the original training set sent to validation 
+    '''
+
+    trainset = torchvision.datasets.FashionMNIST(root='../data', train=True, download=True, \
+        transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), \
+        torchvision.transforms.Normalize((0.0,), (1.0,))]))
+    testset = torchvision.datasets.FashionMNIST(root='../data', train=False, download=True, \
+        transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), \
+        torchvision.transforms.Normalize((0.0,), (1.0,))]))
+    
+    return trainset, testset
+
+class DatasetRegression(torch.utils.data.Dataset):
+
+    def __init__(self,X,Y):
+        self.data = X
+        self.targets = Y
+    
+    def __getitem__(self,index):
+        data, target = self.data[index], self.targets[index]
+        return data, target
+    
+    def __len__(self):
+        return len(self.targets)
+
+def get_california_housing(percentage_test=0.3):
+
+    X, Y = sklearn.datasets.fetch_california_housing(data_home='../data/CaliforniaHousing/', \
+        download_if_missing=True,return_X_y=True)
+    
+    # We remove the houses with prices higher than 500,000 dollars
+    idx_drop = Y >= 5
+    X, Y = X[~idx_drop], np.log(Y[~idx_drop])
+
+    # We shuffle the inputs and outputs before assigning train/test 
+    tmp = list(zip(X,Y))
+    random.shuffle(tmp)
+    X, Y = zip(*tmp)
+    X, Y = torch.FloatTensor(X), torch.FloatTensor(Y)
+    X = (X - torch.mean(X,0)) / torch.std(X,0)
+
+    # Split between training / testing
+    splitpoint_test = int(len(Y) * (1.0 - percentage_test))
+    X_train, Y_train = X[:splitpoint_test], Y[:splitpoint_test]
+    X_test, Y_test = X[splitpoint_test:], Y[splitpoint_test:]
+
+    # Generate and return the datasets
+    trainset = DatasetRegression(X_train,Y_train)
+    testset = DatasetRegression(X_test,Y_test)
+    return trainset, testset
+
+def get_data(dataset='mnist'):
+    '''
+    This function returns the training and validation set from MNIST
+    '''
+
+    if dataset == 'mnist':
+        return get_mnist()
+    elif dataset == 'fashion_mnist':
+        return get_fashion_mnist()
+    elif dataset == 'california_housing':
+        return get_california_housing()
 
 def get_args():
     '''
@@ -80,6 +149,8 @@ def get_args():
         help = 'mini-batch size for the I(X;T) estimation')
     parser.add_argument('--same_batch', action = 'store_true', default = False,
         help = 'use the same mini-batch for the SGD on the error and I(X;T) estimation')
+    parser.add_argument('--dataset', choices = ['mnist', 'fashion_mnist', 'california_housing'], default = 'mnist',
+        help = 'dataset where to run the experiments. Classification: MNIST or Fashion MNIST. Regression: California housing.')
     parser.add_argument('--optimizer_name', choices = ['sgd', 'rmsprop', 'adadelta', 'adagrad', 'adam', 'asgd'], default = 'adam',
         help = 'optimizer')
     parser.add_argument('--learning_rate', type = float, default = 0.0001,
