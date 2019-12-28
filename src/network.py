@@ -65,7 +65,7 @@ class Deterministic_encoder(torch.nn.Module):
             mean_t = self.f_theta(x)
         elif self.network_type == 'conv_net_fashion_mnist':
             mean_t_conv = self.f_theta_conv(x) 
-            mean_t_conv = mean_t_conv.view(-1,2500)
+            mean_t_conv = mean_t_conv.view(-1,5*5*128)
             mean_t = self.f_theta_lin(mean_t_conv)
         elif self.network_type == 'conv_net_trec':
             x = x.permute(1,0)
