@@ -25,6 +25,8 @@ class ConvexIB(torch.nn.Module):
         self.HY = np.log(n_y) # in natts
         self.maxIXY = self.HY # in natts
         self.varY = 0 # to be updated with the training dataset
+        self.IXT = 0 # to be updated
+        self.ITY = 0 # to be
 
         self.u_func_name = u_func_name
         if self.u_func_name == 'pow':
@@ -68,9 +70,12 @@ class ConvexIB(torch.nn.Module):
         - mean_t (Tensor) : deterministic transformation of the input
         '''
 
-        HT = KDE_entropy_t(self.network.logvar_t,self.logvar_kde,mean_t) # in natts
-        HT_given_X = KDE_entropy_t_given_x(self.network.logvar_t,self.K) # in natts
-        self.IXT = (HT - HT_given_X) / np.log(2) # in bits
+        if self.beta == 0: # to avoid nans
+            self.IXT = torch.FloatTensor([3 * self.HY / np.log(2)]) # in bits
+        else:
+            HT = KDE_entropy_t(self.network.logvar_t,self.logvar_kde,mean_t) # in natts
+            HT_given_X = KDE_entropy_t_given_x(self.network.logvar_t,self.K) # in natts
+            self.IXT = (HT - HT_given_X) / np.log(2) # in bits
         return self.IXT
 
     def get_ITY(self,logits_y,y):
@@ -257,6 +262,8 @@ class ConvexIB(torch.nn.Module):
                 else: 
                     loss = - 1.0 * (sgd_train_ITY_lower - self.beta * self.u_func(mi_train_IXT))
                 loss.backward()
+
+                torch.nn.utils.clip_grad_norm_(self.network.parameters(), 1.0)
                 optimizer.step()
 
             # Update learning rate

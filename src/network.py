@@ -28,14 +28,15 @@ class Deterministic_encoder(torch.nn.Module):
         elif self.network_type == 'conv_net_fashion_mnist':
             layers = []
             layers.append(torch.nn.ReflectionPad2d(1))
-            layers.append(torch.nn.Conv2d(1,5,4,2))
-            layers.append(torch.nn.Conv2d(5,50,5,2))
+            layers.append(torch.nn.Conv2d(1,25,4,2))
+            layers.append(torch.nn.ReLU6())
+            layers.append(torch.nn.Conv2d(25,100,5,2))
             self.f_theta_conv = torch.nn.Sequential(*layers)
             
             layers = []
-            layers.append(torch.nn.Linear(1250,800))
-            layers.append(torch.nn.ReLU6())
-            layers.append(torch.nn.Linear(800,self.K))
+            layers.append(torch.nn.Linear(2500,self.K))
+            #layers.append(torch.nn.ReLU6())
+            #layers.append(torch.nn.Linear(125,self.K))
             self.f_theta_lin = torch.nn.Sequential(*layers)
 
         elif self.network_type == 'mlp_california_housing':
@@ -64,7 +65,7 @@ class Deterministic_encoder(torch.nn.Module):
             mean_t = self.f_theta(x)
         elif self.network_type == 'conv_net_fashion_mnist':
             mean_t_conv = self.f_theta_conv(x) 
-            mean_t_conv = mean_t_conv.view(-1,1250)
+            mean_t_conv = mean_t_conv.view(-1,2500)
             mean_t = self.f_theta_lin(mean_t_conv)
         elif self.network_type == 'conv_net_trec':
             x = x.permute(1,0)

@@ -19,7 +19,7 @@ def compute_distances_loo(x):
     x_t_norm = x_norm.reshape(1,-1)
     dist = x_norm + x_t_norm - 2.0*x.dot(x_t)
     dist = dist + 10e20*np.eye(dist.shape[0]) # deprecate diagonals
-    dist = np.clip(dist,0,np.inf)
+    dist = np.clip(dist,0,10e20)
 
     return dist
 
@@ -71,7 +71,7 @@ def compute_distances(x):
     x_t = torch.transpose(x,0,1)
     x_t_norm = x_norm.view(1,-1)
     dist = x_norm + x_t_norm - 2.0*torch.mm(x,x_t)
-    dist = torch.clamp(dist,0,np.inf)
+    dist = torch.clamp(dist,0,10e20)
 
     return dist
 
