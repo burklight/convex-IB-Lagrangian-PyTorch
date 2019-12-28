@@ -149,7 +149,7 @@ def get_args():
         help = 'minimum value of beta for the study of the behavior')
     parser.add_argument('--beta_lim_max', type = float, default = 1.0,
         help = 'maximum value of beta for the study of the behavior')  
-    parser.add_argument('--u_func_name', choices = ['pow', 'exp'], default = 'exp',
+    parser.add_argument('--u_func_name', choices = ['pow', 'exp','none'], default = 'exp',
         help = 'monotonically increasing, strictly convex function')
     parser.add_argument('--hyperparameter', type = float, default = 1.0,
         help = 'hyper-parameter of the h function (e.g., alpha in the power and eta in the exponential case)')
