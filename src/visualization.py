@@ -127,9 +127,9 @@ def plot_behavior(logs_dir,figs_dir,K,betas,train_logvar_t,HY,hfun='exp',param=1
         ITY_expected = IXT_expected
 
     # Truncate too large IXT for uncompressed representations so we can see them in the plot
-    if betas[0] == 0 and IXT_train[0] > HY * 3:
-        IXT_train[0] = HY * 3 
-        IXT_validation[0] = HY * 3 
+    if betas[0] == 0 and IXT_train[0] > HY * 9:
+        IXT_train[0] = HY * 9
+        IXT_validation[0] = HY * 9
 
     # Print the information plane
     maxval = max(HY*2,max(np.max(IXT_train), np.max(IXT_validation)))
@@ -145,7 +145,10 @@ def plot_behavior(logs_dir,figs_dir,K,betas,train_logvar_t,HY,hfun='exp',param=1
     ax[0].set_xlabel(r'$I(X;T)$')
     ax[0].set_ylabel(r'$I(T;Y)$')
     if problem_type == 'classification':
-        ax[0].annotate(r' $I(X;Y) = H(Y)$', xy=(maxval*0.75,HY*(1.05)), color='darkorange')
+        if deterministic:
+            ax[0].annotate(r' $I(X;Y) = H(Y)$', xy=(maxval*0.75,HY*(1.05)), color='darkorange')
+        else:
+            ax[0].annotate(r' $H(Y)$', xy=(maxval*0.75,HY*(1.05)), color='darkorange')
     else:
         ax[0].annotate(r' $I(X;Y)$', xy=(maxval*0.75,HY*(1.05)), color='darkorange')
     ax[0].annotate(r' $I(X;T) \geq I(T;Y)$', xy=(HY*(1.05),HY*(1.05)), color='darkorange')
@@ -163,7 +166,10 @@ def plot_behavior(logs_dir,figs_dir,K,betas,train_logvar_t,HY,hfun='exp',param=1
     ax[1].set_xlabel(r'$\beta$')
     ax[1].set_ylabel(r'$I(T;Y)$')
     if problem_type == 'classification':
-        ax[1].annotate(r' $I(X;Y) = H(Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
+        if deterministic:
+            ax[1].annotate(r' $I(X;Y) = H(Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
+        else:
+            ax[1].annotate(r' $H(Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
     else:
         ax[1].annotate(r' $I(X;Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
     ax[1].set_xlim(left=np.min(betas),right=np.max(betas))
@@ -179,8 +185,12 @@ def plot_behavior(logs_dir,figs_dir,K,betas,train_logvar_t,HY,hfun='exp',param=1
     ax[2].plot(betas, IXT_validation, '.:', color = 'blue', markersize=9,  markeredgecolor='black', label='validation')
     ax[2].set_xlabel(r'$\beta$')
     ax[2].set_ylabel(r'$I(X;T)$')
-    ax[2].annotate(r' $I(X;Y) = H(Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
     if problem_type == 'classification':
+        if deterministic:
+            ax[2].annotate(r' $I(X;Y) = H(Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
+        else:
+            ax[2].annotate(r' $H(Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
+    else:
         ax[2].annotate(r' $I(X;Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
     ax[2].set_xlim(left=np.min(betas),right=np.max(betas))
     ax[2].set_ylim(bottom=0,top=maxval)
