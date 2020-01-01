@@ -108,7 +108,7 @@ def plot_behavior(logs_dir,figs_dir,K,betas,train_logvar_t,HY,hfun='exp',param=1
         IXT_validation[i] = np.load(logs_dir + name_base + 'validation_IXT.npy')[-1] 
         ITY_train[i] = np.load(logs_dir + name_base + 'train_ITY.npy')[-1] 
         ITY_validation[i] = np.load(logs_dir + name_base + 'validation_ITY.npy')[-1] 
-    
+        
     # Create expected behavior
     if deterministic:
         if hfun == 'exp':
@@ -123,7 +123,13 @@ def plot_behavior(logs_dir,figs_dir,K,betas,train_logvar_t,HY,hfun='exp',param=1
             IXT_expected = np.array([(1/((1+param)*b + 1e-10)**(1/param)) for b in betas_th])
         elif hfun == 'shifted-exp':
             betas_th = betas 
-            IXT_expected = -1.0*np.log(param*betas)/param + compression
+            IXT_expected = -1.0*np.log(param*betas+1e-10)/param + compression
+        ITY_expected = IXT_expected
+
+    # Truncate too large IXT for uncompressed representations so we can see them in the plot
+    if betas[0] == 0 and IXT_train[0] > HY * 3:
+        IXT_train[0] = HY * 3 
+        IXT_validation[0] = HY * 3 
 
     # Print the information plane
     maxval = max(HY*2,max(np.max(IXT_train), np.max(IXT_validation)))
@@ -196,7 +202,9 @@ def plot_clustering(logs_dir,figs_dir,betas,K=2,train_logvar_t=False,example='Fa
         + "-Tr-" + str(bool(train_logvar_t)) + '-'
 
     # Load hidden variables 
-    npoints = 10000
+    name_base = "K-" + str(K) + "-B-" + str(round(betas[0],3)).replace('.', '-') \
+            + "-Tr-" + str(bool(train_logvar_t)) + '-'
+    npoints = min(10000,len(np.load(logs_dir + name_base + 'hidden_variables.npy')))
     hidden_variables = np.empty((len(betas),npoints,2))
     for i,beta in enumerate(betas):
         name_base = "K-" + str(K) + "-B-" + str(round(beta,3)).replace('.', '-') \
