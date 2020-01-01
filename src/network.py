@@ -28,7 +28,7 @@ class Deterministic_encoder(torch.nn.Module):
         elif self.network_type == 'conv_net_fashion_mnist':
             layers = []
             layers.append(torch.nn.ReflectionPad2d(1))
-            layers.append(torch.nn.Conv2d(1,32,4,2))
+            layers.append(torch.nn.Conv2d(1,32,5,2))
             layers.append(torch.nn.ReLU6())
             layers.append(torch.nn.Conv2d(32,128,5,2))
             self.f_theta_conv = torch.nn.Sequential(*layers)
@@ -108,8 +108,6 @@ class Deterministic_decoder(torch.nn.Module):
         elif network_type == 'conv_net_trec':
             layers = []
             layers.append(torch.nn.Linear(self.K,n_y))
-            #layers.append(torch.nn.ReLU6())
-            #layers.append(torch.nn.Linear(128,n_y))
             self.g_theta = torch.nn.Sequential(*layers)
 
 

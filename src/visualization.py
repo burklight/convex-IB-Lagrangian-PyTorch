@@ -87,7 +87,7 @@ def plot_results(IXT_train, IXT_validation, ITY_train, ITY_validation,
     plt.tight_layout()
     plt.pause(0.01)
 
-def plot_behavior(logs_dir,figs_dir,K,betas,train_logvar_t,HY,hfun='exp',param=1):
+def plot_behavior(logs_dir,figs_dir,K,betas,train_logvar_t,HY,hfun='exp',param=1,compression=1,problem_type='classification',deterministic=True):
 
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize = (16,4))
 
@@ -105,64 +105,78 @@ def plot_behavior(logs_dir,figs_dir,K,betas,train_logvar_t,HY,hfun='exp',param=1
         name_base = "K-" + str(K) + "-B-" + str(round(beta,3)).replace('.', '-') \
             + "-Tr-" + str(bool(train_logvar_t)) + '-'
         IXT_train[i] = np.load(logs_dir + name_base + 'train_IXT.npy')[-1]
-        IXT_validation[i] = np.load(logs_dir + name_base + 'validation_IXT.npy')[-1]
-        ITY_train[i] = np.load(logs_dir + name_base + 'train_ITY.npy')[-1]
-        ITY_validation[i] = np.load(logs_dir + name_base + 'validation_ITY.npy')[-1]
+        IXT_validation[i] = np.load(logs_dir + name_base + 'validation_IXT.npy')[-1] 
+        ITY_train[i] = np.load(logs_dir + name_base + 'train_ITY.npy')[-1] 
+        ITY_validation[i] = np.load(logs_dir + name_base + 'validation_ITY.npy')[-1] 
     
     # Create expected behavior
-    if hfun == 'exp':
-        bmin = (1 / (param * np.exp(param * HY)))
-        betas_th = [bmin] + list(betas[betas >= bmin])
-        IXT_expected = np.empty(len(betas_th))
-        IXT_expected = np.array([-np.log(param*b + 1e-10)/param for b in betas_th])
-    elif hfun == 'pow':
-        bmin = (1/((1+param)*HY**param))
-        betas_th = [bmin] + list(betas[betas >= bmin])
-        IXT_expected = np.empty(len(betas_th))
-        IXT_expected = np.array([(1/((1+param)*b + 1e-10)**(1/param)) for b in betas_th])
-    ITY_expected = IXT_expected
+    if deterministic:
+        if hfun == 'exp':
+            bmin = (1 / (param * np.exp(param * HY)))
+            betas_th = [bmin] + list(betas[betas >= bmin])
+            IXT_expected = np.empty(len(betas_th))
+            IXT_expected = np.array([-np.log(param*b + 1e-10)/param for b in betas_th])
+        elif hfun == 'pow':
+            bmin = (1/((1+param)*HY**param))
+            betas_th = [bmin] + list(betas[betas >= bmin])
+            IXT_expected = np.empty(len(betas_th))
+            IXT_expected = np.array([(1/((1+param)*b + 1e-10)**(1/param)) for b in betas_th])
+        elif hfun == 'shifted-exp':
+            betas_th = betas 
+            IXT_expected = -1.0*np.log(param*betas)/param + compression
 
     # Print the information plane
-    maxval = max(HY*1.1,max(np.max(IXT_train), np.max(IXT_validation)))
+    maxval = max(HY*2,max(np.max(IXT_train), np.max(IXT_validation)))
     diag = np.linspace(0,maxval,1000)
     ax[0].plot(diag, diag, color = 'darkorange', linestyle = '--')
     ax[0].plot(diag, np.ones(1000)*HY, color = 'darkorange', linestyle = '--')
     ax[0].fill_between(diag, 0, np.where(diag>HY, HY, diag), alpha = 0.5, color='darkorange')
     ax[0].plot(diag, np.where(diag>HY, HY, diag), alpha = 0.5, color='blue', linewidth=4)
-    ax[0].plot(IXT_expected, ITY_expected, '*:', color='green', markeredgecolor='black', markersize=9, label = 'theoretical')
+    if deterministic:
+        ax[0].plot(IXT_expected, ITY_expected, '*:', color='green', markeredgecolor='black', markersize=9, label = 'theoretical')
     ax[0].plot(IXT_train, ITY_train, 'X:', color='red', markersize=9, markeredgecolor='black', label = 'train')
     ax[0].plot(IXT_validation, ITY_validation, '.:', color='blue', markersize=9, markeredgecolor='black', label = 'validation')
     ax[0].set_xlabel(r'$I(X;T)$')
     ax[0].set_ylabel(r'$I(T;Y)$')
-    ax[0].annotate(r' $I(X;Y) = H(Y)$', xy=(maxval*0.75,HY*(1.05)), color='darkorange')
+    if problem_type == 'classification':
+        ax[0].annotate(r' $I(X;Y) = H(Y)$', xy=(maxval*0.75,HY*(1.05)), color='darkorange')
+    else:
+        ax[0].annotate(r' $I(X;Y)$', xy=(maxval*0.75,HY*(1.05)), color='darkorange')
     ax[0].annotate(r' $I(X;T) \geq I(T;Y)$', xy=(HY*(1.05),HY*(1.05)), color='darkorange')
-    ax[0].set_xlim(left=0,right=maxval)
+    ax[0].set_xlim(left=0,right=max(maxval,HY*2.5))
     ax[0].set_ylim(bottom=0, top=HY*(1.1))
     ax[0].legend()
 
     # Print the evolution of I(T;Y)
     diag = np.linspace(np.min(betas),np.max(betas),1000)
     ax[1].plot(diag, np.ones(1000)*HY, color = 'darkorange', linestyle = '--')
-    ax[1].plot(betas_th, ITY_expected, '*:', color = 'green', markeredgecolor='black', markersize=9, label='theoretical')
+    if deterministic:
+        ax[1].plot(betas_th, ITY_expected, '*:', color = 'green', markeredgecolor='black', markersize=9, label='theoretical')
     ax[1].plot(betas, ITY_train, 'X:', color='red', markersize=9, markeredgecolor='black', label = 'train')
     ax[1].plot(betas, ITY_validation, '.:', color = 'blue', markersize=9, markeredgecolor='black', label='validation')
     ax[1].set_xlabel(r'$\beta$')
     ax[1].set_ylabel(r'$I(T;Y)$')
-    ax[1].annotate(r' $I(X;Y) = H(Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
-    ax[1].set_xlim(left=0,right=np.max(betas))
+    if problem_type == 'classification':
+        ax[1].annotate(r' $I(X;Y) = H(Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
+    else:
+        ax[1].annotate(r' $I(X;Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
+    ax[1].set_xlim(left=np.min(betas),right=np.max(betas))
     ax[1].set_ylim(bottom=0,top=HY*(1.1))
     ax[1].legend()
 
     # Print the evolution of I(X;T)
     diag = np.linspace(np.min(betas),np.max(betas),1000)
     ax[2].plot(diag, np.ones(1000)*HY, color = 'darkorange', linestyle = '--')
-    ax[2].plot(betas_th, IXT_expected, '*:', color = 'green', markersize=9, markeredgecolor='black', label='theoretical')
+    if deterministic:
+        ax[2].plot(betas_th, IXT_expected, '*:', color = 'green', markersize=9, markeredgecolor='black', label='theoretical')
     ax[2].plot(betas, IXT_train, 'X:', color='red', markersize=9, markeredgecolor='black', label = 'train')
     ax[2].plot(betas, IXT_validation, '.:', color = 'blue', markersize=9,  markeredgecolor='black', label='validation')
     ax[2].set_xlabel(r'$\beta$')
     ax[2].set_ylabel(r'$I(X;T)$')
     ax[2].annotate(r' $I(X;Y) = H(Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
-    ax[2].set_xlim(left=0,right=np.max(betas))
+    if problem_type == 'classification':
+        ax[2].annotate(r' $I(X;Y)$', xy=(betas[-1]*0.75,HY*(1.05)), color='darkorange')
+    ax[2].set_xlim(left=np.min(betas),right=np.max(betas))
     ax[2].set_ylim(bottom=0,top=maxval)
     ax[2].legend()
 

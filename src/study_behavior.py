@@ -23,6 +23,7 @@ if dataset_name == 'mnist':
     maxIXY = np.log2(10)
     problem_type = 'classification'
     TEXT = None
+    deterministic = True
 elif dataset_name == 'fashion_mnist':
     trainset, validationset = get_data(dataset_name)
     n_x = (28,28)
@@ -31,6 +32,7 @@ elif dataset_name == 'fashion_mnist':
     maxIXY = np.log2(n_y)
     problem_type = 'classification'
     TEXT = None
+    deterministic = True
 elif dataset_name == 'california_housing':
     trainset, validationset = get_data(dataset_name)
     n_x = 8
@@ -38,9 +40,10 @@ elif dataset_name == 'california_housing':
     network_type = 'mlp_california_housing'
     varY = torch.var(trainset.targets)
     HY = 0.5 * math.log(varY.item() * 2.0 * math.pi * math.e) / math.log(2)
-    maxIXY = 0.72785 / math.log(2) # Estimation by training with only the cross entropy and getting the result after training 
+    maxIXY = 0.848035293483288 / math.log(2) # Estimation by training with only the cross entropy and getting the result after training 
     problem_type = 'regression'
     TEXT = None
+    deterministic = False
 elif dataset_name == 'trec':
     trainset, validationset, TEXT, LABEL = get_data(dataset_name)
     n_x = len(TEXT.vocab)
@@ -48,6 +51,7 @@ elif dataset_name == 'trec':
     network_type = 'conv_net_trec'
     maxIXY = np.log2(n_y)
     problem_type = 'classification'
+    deterministic = False
 
 # Create the folders
 args.logs_dir = os.path.join(args.logs_dir,dataset_name) + '/'
@@ -74,7 +78,8 @@ def train_and_save(beta):
     print("--- Studying Non-Linear IB behavior with beta = " + str(round(beta,3)) + " ---")
     # Train the network
     convex_IB = ConvexIB(n_x = n_x, n_y = n_y, problem_type = problem_type, network_type = network_type, K = args.K, beta = beta, logvar_t = args.logvar_t, 
-        logvar_kde = args.logvar_kde, train_logvar_t = args.train_logvar_t, u_func_name = args.u_func_name, hyperparameter = args.hyperparameter, TEXT=TEXT)
+        logvar_kde = args.logvar_kde, train_logvar_t = args.train_logvar_t, u_func_name = args.u_func_name, hyperparameter = args.hyperparameter, TEXT=TEXT, 
+        compression_level = args.compression, method = args.method)
     convex_IB.fit(trainset, validationset, n_epochs = args.n_epochs, learning_rate = args.learning_rate,
         learning_rate_drop = args.learning_rate_drop, learning_rate_steps = args.learning_rate_steps, sgd_batch_size = args.sgd_batch_size,
         mi_batch_size = args.mi_batch_size, same_batch = args.same_batch, eval_rate = args.eval_rate, optimizer_name = args.optimizer_name,
@@ -91,6 +96,7 @@ with multiprocessing.Pool(8) as p:
     p.map(train_and_save, betas)
 
 # Visualize the comparison
-plot_behavior(args.logs_dir,args.figs_dir,args.K,betas,args.train_logvar_t,maxIXY,args.u_func_name,args.hyperparameter)
+plot_behavior(args.logs_dir,args.figs_dir,args.K,betas,args.train_logvar_t,maxIXY,args.u_func_name,args.hyperparameter,
+    args.compression,problem_type,deterministic)
 if problem_type == 'classification':
     plot_clustering(args.logs_dir,args.figs_dir,betas,args.K,args.train_logvar_t,example=args.example_clusters)

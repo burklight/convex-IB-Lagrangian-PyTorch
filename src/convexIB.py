@@ -19,7 +19,7 @@ class ConvexIB(torch.nn.Module):
     '''
 
     def __init__(self,n_x,n_y,problem_type,network_type,K,beta,logvar_t=-1.0,logvar_kde=-1.0,\
-        train_logvar_t=False, u_func_name='pow', hyperparameter=1.0, TEXT=None):
+        train_logvar_t=False, u_func_name='pow', hyperparameter=1.0, TEXT=None, compression_level = 1.0, method = 'nonlinear_IB'):
         super(ConvexIB,self).__init__()
 
         self.HY = np.log(n_y) # in natts
@@ -33,8 +33,12 @@ class ConvexIB(torch.nn.Module):
             self.u_func = lambda r: r ** (1+hyperparameter)
         elif self.u_func_name == 'exp':
             self.u_func = lambda r: torch.exp(hyperparameter*r)
+        elif self.u_func_name == 'shifted-exp':
+            self.u_func = lambda r: torch.exp((r-compression_level)*hyperparameter)*hyperparameter
         else:
             self.u_func = lambda r: r
+        self.method = method
+        
         self.K = K
         self.beta = beta
         self.logvar_kde = logvar_kde
@@ -70,12 +74,21 @@ class ConvexIB(torch.nn.Module):
         - mean_t (Tensor) : deterministic transformation of the input
         '''
 
-        if self.beta == 0: # to avoid nans
-            self.IXT = torch.FloatTensor([3 * self.HY / np.log(2)]) # in bits
-        else:
+        if self.method == 'nonliear_IB':
             HT = KDE_entropy_t(self.network.logvar_t,self.logvar_kde,mean_t) # in natts
             HT_given_X = KDE_entropy_t_given_x(self.network.logvar_t,self.K) # in natts
-            self.IXT = (HT - HT_given_X) / np.log(2) # in bits
+            self.IXT = (HT - HT_given_X) / np.log(2) # in bits    
+        elif self.method == 'variational_IB':
+            self.IXT = -0.5*(1+2*self.network.logvar_t-mean_t.pow(2)-torch.exp(self.network.logvar_t)).sum(1).mean().div(math.log(2))
+
+        # NaNs and exploding gradients control
+        with torch.no_grad():
+            if self.u_func_name == 'shifted-exp':
+                if self.IXT > self.compression_level:
+                    self.IXT -= (self.IXT - self.compression_level + 0.01)
+            if self.u_func(self.IXT) == float('inf'):
+                self.IXT = 1e5
+
         return self.IXT
 
     def get_ITY(self,logits_y,y):
@@ -93,7 +106,7 @@ class ConvexIB(torch.nn.Module):
         else: 
             MSE = self.mse(logits_y.view(-1),y)
             ITY = 0.5 * torch.log(self.varY / MSE) / np.log(2) # in bits
-            return ITY , self.HY - MSE
+            return ITY , (self.HY - MSE) / np.log(2) # in bits
 
     def evaluate(self,logits_y,y):
         '''
@@ -152,8 +165,8 @@ class ConvexIB(torch.nn.Module):
         if self.problem_type == 'regression':
             self.varY = torch.var(trainset.targets)
             self.HY = 0.5 * math.log(self.varY.item()*2.0*math.pi*math.e) # in natts
-            self.maxIXY = 0.72785 # approximation for California Housing (just train with beta = 0 and get the value of I(T;Y) after training)
-                                  # only for visualization purposes
+            self.maxIXY = 0.848035293483288 # approximation for California Housing (just train with beta = 0 and get the value of I(T;Y) after training)
+                                            # only for visualization purposes
 
         # Data Loader
         n_sgd_batches = math.floor(len(trainset) / sgd_batch_size)
@@ -258,7 +271,7 @@ class ConvexIB(torch.nn.Module):
                 mi_train_mean_t = self.network.encode(mi_train_x,random=False)
                 mi_train_IXT = self.get_IXT(mi_train_mean_t)
                 if self.problem_type == 'classification':
-                    loss = - 1.0 * (sgd_train_ITY - self.beta * self.u_func(mi_train_IXT))
+                    loss = - 1.0 * (sgd_train_ITY - self.beta * self.u_func(mi_train_IXT)) 
                 else: 
                     loss = - 1.0 * (sgd_train_ITY_lower - self.beta * self.u_func(mi_train_IXT))
                 loss.backward()
@@ -286,7 +299,7 @@ class ConvexIB(torch.nn.Module):
                             train_ITY[report] += self.get_ITY(train_logits_y,train_y).item() / n_sgd_batches
                         else: 
                             tmp_train_ITY, _ = self.get_ITY(train_logits_y,train_y)
-                            train_ITY[report] += tmp_train_ITY.item() / n_sgd_batches
+                            train_ITY[report] += tmp_train_ITY.item() / n_sgd_batches 
                         train_loss[report] += - 1.0 * (train_ITY[report] - \
                             self.beta * train_IXT[report]) / n_sgd_batches
                         train_performance[report] += self.evaluate(train_logits_y,train_y).item() / n_sgd_batches
@@ -302,7 +315,7 @@ class ConvexIB(torch.nn.Module):
                     if self.problem_type == 'classification':
                         validation_ITY[report] = self.get_ITY(validation_logits_y,validation_y).item()
                     else: 
-                        tmp_validation_ITY, _ = self.get_ITY(validation_logits_y,validation_y)
+                        tmp_validation_ITY, _ = self.get_ITY(validation_logits_y,validation_y) 
                         validation_ITY[report] = tmp_validation_ITY.item()
                     validation_loss[report] = - 1.0 * (validation_ITY[report] - \
                         self.beta * train_IXT[report])

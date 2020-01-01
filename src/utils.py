@@ -149,10 +149,12 @@ def get_args():
         help = 'minimum value of beta for the study of the behavior')
     parser.add_argument('--beta_lim_max', type = float, default = 1.0,
         help = 'maximum value of beta for the study of the behavior')  
-    parser.add_argument('--u_func_name', choices = ['pow', 'exp','none'], default = 'exp',
+    parser.add_argument('--u_func_name', choices = ['pow', 'exp','shifted-exp','none'], default = 'exp',
         help = 'monotonically increasing, strictly convex function')
     parser.add_argument('--hyperparameter', type = float, default = 1.0,
         help = 'hyper-parameter of the h function (e.g., alpha in the power and eta in the exponential case)')
+    parser.add_argument('--compression', type = float, default = 1.0,
+        help = 'desired compression level (in bits). Only for the shifted exponential.')
     parser.add_argument('--example_clusters', action = 'store_true', default = False,
         help = 'plot example of the clusters obtained (only for study behavior of power with alpha 1, otherwise change the number of clusters to show)')
     parser.add_argument('--K', type = int, default = 2,
@@ -171,6 +173,8 @@ def get_args():
         help = 'dataset where to run the experiments. Classification: MNIST or Fashion MNIST. Regression: California housing.')
     parser.add_argument('--optimizer_name', choices = ['sgd', 'rmsprop', 'adadelta', 'adagrad', 'adam', 'asgd'], default = 'adam',
         help = 'optimizer')
+    parser.add_argument('--method', choices = ['nonlinear_IB', 'variational_IB'], default = 'nonlinear_IB',
+        help = 'information bottleneck computation method')
     parser.add_argument('--learning_rate', type = float, default = 0.0001,
         help = 'initial learning rate')
     parser.add_argument('--learning_rate_drop', type = float, default = 0.6,
