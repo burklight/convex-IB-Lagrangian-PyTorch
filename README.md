@@ -13,21 +13,25 @@ In order to be able to run the code gracefully you will need the following Pytho
 - scikit-learn==0.21.3
 - torch==1.2.0+cpu
 - torchvision==0.4.0+cpu
+- torchtext==0.4.0
 - scipy==1.3.1
 - autograd==1.3
 - progressbar2==3.43.1
 - jupyterlab==1.1.3
 - jupyterlab-server==1.0.6
+- scpacy==2.2.3
 
 You can install them easily doing:
 
 - Linux: 
 ```console 
 pip3 install -r requirements.txt -f https://download.pytorch.org/whl/torch_stable.html 
+python3 -m spacy download en
 ```
 - Mac:
 ```console 
 pip3 install -r requirements_mac.txt 
+python3 -m spacy download en
 ```
 
 ## Obtain the figures from the article 
